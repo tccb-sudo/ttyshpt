@@ -132,10 +132,56 @@ Trang **Dashboard** của HR có nút **🏛️ Bảng tổng hợp chi thu nh�
 - **Khối chữ ký:** mỗi người ký (Người lập bảng · Phòng TCCB · Hiệu trưởng) có ô chọn — bỏ chọn thì khối đó (chức danh + họ tên) không in ra file; bỏ cả ba thì file không có phần chữ ký.
 - File được tạo ngay trên trình duyệt (thư viện ExcelJS tải từ CDN khi bấm nút); tên người ký và các ô chọn được nhớ cho lần sau.
 
+## Hai loại phiếu trong một ứng dụng (bản gộp 2026.10.30)
+
+Một ứng dụng dùng cho cả **giảng viên, nghiên cứu viên, trợ giảng** (phiếu `GV`) và **khối hành chính, hỗ trợ, phục vụ** (phiếu `HCHTPV`). Hai mẫu phiếu cùng cấu trúc điểm (`V2_KEYS`), chỉ khác chữ tiêu chí; nội dung từng mẫu ghi nguyên văn như hai ứng dụng trước (`V2_FORM_HCHTPV`, `V2_FORM_GV` trong `public/index.html`).
+
+**Vị trí đánh giá.** Mỗi dòng trong `DanhSachNhanSu` là một *vị trí đánh giá* = (người, đơn vị, loại phiếu). Thêm cột **`LoaiPhieu`** với giá trị `GV` hoặc `HCHTPV` (để trống = `HCHTPV`). Một người kiêm nhiệm thì có nhiều dòng, mỗi dòng một vị trí:
+
+| MSNV | HoTen | DonVi | TRUONG DON VI | LoaiPhieu |
+|---|---|---|---|---|
+| 002 | Nguyễn Đức Tuấn | Bộ môn X | | GV |
+| 002 | Nguyễn Đức Tuấn | Bộ môn X | x | HCHTPV |
+| 002 | Nguyễn Đức Tuấn | Trường Dược | x | HCHTPV |
+
+- Mỗi vị trí nộp **một phiếu mỗi tháng**. Khóa chống nộp trùng là *mã số + đơn vị + **loại phiếu** + tháng*, nên phiếu `GV` và phiếu `HCHTPV` cùng một bộ môn không chặn nhau.
+- Đăng nhập: người có nhiều vị trí chọn vị trí; về sau dùng **🔄 Chuyển đơn vị**. Trang **Tự đánh giá** hiện thêm danh sách *"Các phiếu của Thầy/Cô tháng …"*, mỗi vị trí đánh dấu ✅ đã nộp / ⏳ chưa nộp và có nút chuyển nhanh, để không ai bỏ sót phiếu kiêm nhiệm.
+- Lịch sử cá nhân, bảng chấm của Trưởng đơn vị và báo cáo HR đều có nhãn/cột **Loại phiếu**. Một người có hai phiếu trong cùng đơn vị thì hiện thành hai dòng, điểm Trưởng đơn vị chấm vào đúng từng phiếu.
+- Bảng tổng hợp chi thu nhập tăng thêm (TCCB) có ô chọn **Loại phiếu**: cả hai / chỉ HCHTPV / chỉ GV; tiêu đề và tên file đổi theo.
+- Dữ liệu vẫn lưu ở `DuLieuDanhGia_KPI`, thêm **cột cuối "Loại phiếu"** (cột 37). Dòng cũ để trống được hiểu là `HCHTPV`. Phiếu tháng trước 10/2026 (mẫu cũ) không phân loại.
+
+### Cài đặt (làm 1 lần)
+
+1. Dán `apps-script/Code.gs` mới vào Apps Script → **Deploy → Manage deployments → ✏️ → New version → Deploy**.
+2. Chạy hàm **`setupLoaiPhieu`**: thêm cột `LoaiPhieu` vào `DanhSachNhanSu` và cột "Loại phiếu" vào `DuLieuDanhGia_KPI`, ô trống điền `HCHTPV` (chạy lại an toàn, không ghi đè ô đã có).
+3. Sửa cột `LoaiPhieu` = `GV` cho các dòng giảng viên / nghiên cứu viên / trợ giảng. Với người kiêm nhiệm, thêm dòng cho từng vị trí như bảng trên.
+4. Chạy hàm **`listMultiRole`** để xem danh sách người có nhiều vị trí và rà soát lần cuối.
+5. Push `public/index.html` lên GitHub để Cloudflare triển khai lại. Chân trang phải hiện *phiên bản 2026.10.30*; nếu Apps Script chưa cập nhật, trang hiện dải vàng cảnh báo.
+
+> Muốn chuyển dữ liệu từ một bản dggv cũ sang bản gộp: dán các dòng `DanhSachNhanSu` và `DuLieuDanhGia_KPI` của dggv vào Sheet của bản gộp (hai sheet cùng cấu trúc cột) rồi đặt cột `LoaiPhieu` = `GV` cho các dòng vừa dán. Sau đó có thể ngừng Worker dggv.
+
+## Ai chấm phiếu của ai (cột `NguoiCham`)
+
+Mỗi vị trí đánh giá trong `DanhSachNhanSu` có thêm cột **`NguoiCham`** = MSNV của người chấm phiếu đó (hàm `setupLoaiPhieu` tự thêm cột). Áp dụng cho phiếu từ tháng 10/2026; phiếu cũ vẫn chấm theo đơn vị.
+
+1. Ô `NguoiCham` có MSNV hợp lệ → **chỉ người đó** thấy và chấm phiếu này. Người chấm phải có ít nhất một dòng `TRUONG DON VI` = `x` (hoặc `hr`) để vào được trang chấm sau khi xác thực OTP.
+   - Cột tùy chọn **`DonViCham`** gắn phiếu với một vị trí của người chấm: ghi tên đơn vị (đúng như cột `DonVi`, vd. `Trường Dược`) thì phiếu **chỉ hiện khi người chấm đang ở vị trí Trưởng đơn vị của đơn vị đó**. Để trống thì hiện ở mọi vị trí Trưởng đơn vị của người chấm. Ghi sai (người chấm không phải Trưởng đơn vị ở đó) thì bị bỏ qua.
+2. Ô `NguoiCham` trống → **Trưởng đơn vị** (`x`) của đơn vị đó chấm, trừ chính chủ phiếu, và **chỉ khi đang ở đúng vị trí của đơn vị đó**.
+3. Không còn ai đủ điều kiện (vd. chủ phiếu là Trưởng đơn vị duy nhất của đơn vị) → **HR** chấm, ở mục *Chấm phiếu được giao* trên menu HR.
+4. **Không ai chấm phiếu của chính mình.** Kiểm tra ở máy chủ khi xem và khi lưu.
+
+Bảng chấm hiển thị cột **Đơn vị** vì một người chấm có thể chấm phiếu của nhiều đơn vị; một người có hai phiếu (hai vị trí) hiện thành hai dòng và điểm ghi đúng từng phiếu. Mỗi lần lưu, MSNV người chấm được ghi vào cột cuối **"Người chấm (MSNV)"** của `DuLieuDanhGia_KPI`.
+
+Ví dụ để ông Tuấn ở vị trí *Hiệu trưởng Trường Dược* chỉ thấy các Trưởng đơn vị được giao, còn ở vị trí *Trưởng bộ môn X* chỉ thấy người của Bộ môn X: ghi `DonViCham` = `Trường Dược` cho các dòng `NguoiCham` = MSNV ông Tuấn dưới đây.
+
+Cô Tươi (Trưởng phòng QTTH) → `NguoiCham` = MSNV ông Tuấn; ông Hải (Trưởng bộ môn và Phó hiệu trưởng) → cả hai dòng `NguoiCham` = MSNV ông Tuấn; hai dòng Trưởng đơn vị của ông Tuấn → `NguoiCham` = MSNV người của Phòng TCCB (hoặc cấp trên) để Phó hiệu trưởng cùng đơn vị không chấm phiếu của Hiệu trưởng.
+
+**Cài đặt:** dán `Code.gs` mới, tạo phiên bản mới; chạy `setupLoaiPhieu` (thêm cột `NguoiCham` và tiêu đề cột mới ở sheet phiếu); điền cột `NguoiCham`; chạy **`checkNguoiCham`** để rà (ai chỉ định sai, ai là Trưởng đơn vị chưa có người chấm). Chạy lại bất cứ lúc nào.
+
 ## Người làm việc ở nhiều đơn vị
 
-- Mỗi **đơn vị đánh giá riêng**: kiểm tra "đã gửi" theo *mã số + đơn vị + tháng* (gửi ở đơn vị A vẫn gửi được ở đơn vị B; gửi lại ở A thì bị chặn). Lịch sử cá nhân hiện cả hai đơn vị.
-- Nút **🔄 Chuyển đơn vị** (trên menu trái và cạnh dòng "Đơn vị" ở trang Tự đánh giá) — chỉ hiện với người có từ 2 đơn vị/vai trò trở lên. Chuyển không cần đăng xuất; đã xác thực OTP lúc đăng nhập thì không phải nhập lại. Mỗi lần chuyển được ghi vào `LichSuDangNhap` (trạng thái "🔄 Chuyển đơn vị").
+- Mỗi **vị trí đánh giá** (đơn vị + loại phiếu) đánh giá riêng: kiểm tra "đã gửi" theo *mã số + đơn vị + loại phiếu + tháng* (gửi ở vị trí A vẫn gửi được ở vị trí B; gửi lại ở A thì bị chặn). Lịch sử cá nhân hiện tất cả các vị trí.
+- Nút **🔄 Chuyển đơn vị** (trên menu trái và cạnh dòng "Đơn vị" ở trang Tự đánh giá) — chỉ hiện với người có từ 2 vị trí/vai trò trở lên. Chuyển không cần đăng xuất; đã xác thực OTP lúc đăng nhập thì không phải nhập lại. Mỗi lần chuyển được ghi vào `LichSuDangNhap` (trạng thái "🔄 Chuyển đơn vị").
 
 ## Tốc độ
 
